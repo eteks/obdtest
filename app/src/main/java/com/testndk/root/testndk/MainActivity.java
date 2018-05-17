@@ -1,104 +1,111 @@
+/*
+* Copyright 2013 The Android Open Source Project
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
+
 package com.testndk.root.testndk;
 
-import android.os.AsyncTask;
-import android.app.Activity;
-import android.os.Build;
-import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.widget.TextView;
-import com.microsoft.windowsazure.mobileservices.*;
-import com.microsoft.windowsazure.mobileservices.http.ServiceFilterResponse;
-import com.microsoft.windowsazure.mobileservices.table.MobileServiceTable;
+import android.support.v4.app.FragmentTransaction;
+import android.view.Menu;
+import android.view.MenuItem;
+import android.widget.ViewAnimator;
 
-import java.net.MalformedURLException;
-import java.util.ArrayList;
-import java.util.concurrent.ExecutionException;
+import com.testndk.root.testndk.bluetoothchat.BluetoothChatFragment;
+import com.testndk.root.testndk.common.activities.SampleActivityBase;
+import com.testndk.root.testndk.common.logger.Log;
+import com.testndk.root.testndk.common.logger.LogFragment;
+import com.testndk.root.testndk.common.logger.LogWrapper;
+import com.testndk.root.testndk.common.logger.MessageOnlyLogFilter;
 
-//public class MainActivity extends AppCompatActivity {
-public class MainActivity extends Activity {
+/**
+ * A simple launcher activity containing a summary sample description, sample log and a custom
+ * {@link android.support.v4.app.Fragment} which can display a view.
+ * <p>
+ * For devices with displays with a width of 720dp or greater, the sample log is always visible,
+ * on other devices it's visibility is controlled by an item on the Action Bar.
+ */
+public class MainActivity extends SampleActivityBase {
 
-    private MobileServiceClient mClient;
+    public static final String TAG = "MainActivity";
 
-    private MobileServiceTable<Obdcode> mToDoTable;
-
-//    private ToDoItemAdapter mAdapter;
+    // Whether the Log Fragment is currently shown
+    private boolean mLogShown;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        String url_data = stringFromJNI();
-
-        try {
-            mClient = new MobileServiceClient(
-                    url_data,
-                    this
-            );
-        } catch (MalformedURLException e) {
-            e.printStackTrace();
+        if (savedInstanceState == null) {
+            FragmentTransaction transaction = getSupportFragmentManager().beginTransaction();
+            BluetoothChatFragment fragment = new BluetoothChatFragment();
+            transaction.replace(R.id.sample_content_fragment, fragment);
+            transaction.commit();
         }
+    }
 
-        final Obdcode item = new Obdcode();
-        item.request_code = "test_request1";
-        item.response_code = "test_response1";
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main, menu);
+        return true;
+    }
 
-        System.out.println("output_result");
-        System.out.println("output_result"+item);
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        MenuItem logToggle = menu.findItem(R.id.menu_toggle_log);
+        logToggle.setVisible(findViewById(R.id.sample_output) instanceof ViewAnimator);
+        logToggle.setTitle(mLogShown ? R.string.sample_hide_log : R.string.sample_show_log);
 
-//        try {
-//            mClient.getTable(Obdcode.class).insert(item).get();
-//        } catch (InterruptedException e) {
-//            e.printStackTrace();
-//        } catch (ExecutionException e) {
-//            e.printStackTrace();
-//        }
+        return super.onPrepareOptionsMenu(menu);
+    }
 
-        //Insert the new item
-        AsyncTask<Void, Void, Void> task = new AsyncTask<Void, Void, Void>(){
-            @Override
-            protected Void doInBackground(Void... params) {
-                try {
-                    final Obdcode entity = mClient.getTable(Obdcode.class).insert(item).get();
-
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if(!entity.isComplete()){
-//                                mAdapter.add(entity);
-                            }
-                        }
-                    });
-                } catch (final Exception e) {
-//                    createAndShowDialogFromTask(e, "Error");
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        switch(item.getItemId()) {
+            case R.id.menu_toggle_log:
+                mLogShown = !mLogShown;
+                ViewAnimator output = (ViewAnimator) findViewById(R.id.sample_output);
+                if (mLogShown) {
+                    output.setDisplayedChild(1);
+                } else {
+                    output.setDisplayedChild(0);
                 }
-                return null;
-            }
-        };
-
-        runAsyncTask(task);
-
-//        // Example of a call to a native method
-//        TextView tv = (TextView) findViewById(R.id.sample_text);
-//        tv.setText(stringFromJNI());
-    }
-
-    private AsyncTask<Void, Void, Void> runAsyncTask(AsyncTask<Void, Void, Void> task) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            return task.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
-        } else {
-            return task.execute();
+                supportInvalidateOptionsMenu();
+                return true;
         }
+        return super.onOptionsItemSelected(item);
     }
 
-    /**
-     * A native method that is implemented by the 'native-lib' native library,
-     * which is packaged with this application.
-     */
-    public native String stringFromJNI();
+    /** Create a chain of targets that will receive log data */
+    @Override
+    public void initializeLogging() {
+        // Wraps Android's native log framework.
+        LogWrapper logWrapper = new LogWrapper();
+        // Using Log, front-end to the logging chain, emulates android.util.log method signatures.
+        Log.setLogNode(logWrapper);
 
-    // Used to load the 'native-lib' library on application startup.
-    static {
-        System.loadLibrary("native-lib");
+        // Filter strips out everything except the message text.
+        MessageOnlyLogFilter msgFilter = new MessageOnlyLogFilter();
+        logWrapper.setNext(msgFilter);
+
+        // On screen logging via a fragment with a TextView.
+        LogFragment logFragment = (LogFragment) getSupportFragmentManager()
+                .findFragmentById(R.id.log_fragment);
+        msgFilter.setNext(logFragment.getLogView());
+
+        Log.i(TAG, "Ready");
     }
 }
